@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Spell Caster 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+<!-- Firebase Compat Scripts -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: monospace; color: #fff; }
+  canvas { display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #ui { position: absolute; top: 10px; left: 10px; z-index: 10; pointer-events: none; color: #0ff; font-size: 20px; text-shadow: 1px 1px 0 #000; }
+  #fps { position: absolute; top: 10px; right: 10px; z-index: 10; pointer-events: none; color: #0f0; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0 #000; }
+  #g-layer { z-index: 20; touch-action: none; }
+  #menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; background: #000c; padding: 30px; border: 2px solid #0ff; text-align: center; border-radius: 10px; min-width: 300px; }
+  button { padding: 12px 24px; background: linear-gradient(45deg, #d0f, #90f); border: 2px solid #fff; color: #fff; font-weight: bold; cursor: pointer; margin: 10px; width: 160px; text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; }
+  button:hover { transform: scale(1.1); background: linear-gradient(45deg, #f0f, #b0f); box-shadow: 0 0 15px #d0f; }
+  #spell-wheel { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; height: 400px; z-index: 40; border-radius: 50%; background: radial-gradient(circle, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 70%); }
+  .wheel-btn { position: absolute; width: 100px; height: 100px; border-radius: 50%; background: #000; border: 3px solid #0ff; color: #0ff; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; box-shadow: 0 0 20px #0ff4; }
+  .wheel-btn:hover { background: #0ff; color: #000; box-shadow: 0 0 40px #0ff; transform: scale(1.2); }
+  #btn-resume { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 120px; height: 120px; background: #000d; z-index: 2; }
+  #btn-settings { top: 10%; left: 50%; transform: translate(-50%, 0); }
+  #btn-leave { bottom: 10%; left: 50%; transform: translate(-50%, 0); border-color: #f00; color: #f00; }
+  #btn-leave:hover { background: #f00; color: #000; box-shadow: 0 0 40px #f00; }
+  #settings { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50; background: #000f; padding: 40px; border: 3px solid #0f0; text-align: left; width: 450px; }
+  .key { color: #ff0; font-weight: bold; }
+  .close-x { position: absolute; top: 10px; right: 15px; cursor: pointer; color: #f00; font-size: 24px; font-weight: bold; }
+  .setting-row { margin: 15px 0; display: flex; justify-content: space-between; align-items: center; }
+  input[type=range] { width: 150px; }
+  input[type=checkbox] { transform: scale(1.5); }
+  .r{color:#f00} .b{color:#00f} .g{color:#0f0}
+</style>
+</head>
+<body>
+<div id="ui">
+    SCORE: <span id="s">0</span> | HP: <span id="h" class="r">100</span>% | MANA: <span id="m" class="b">100</span><br>
+    <span id="status">SOLO</span> <span id="opp_stat" style="display:none">| ENEMY HP: <span id="eh" class="r">100</span>%</span><br>
+    <span id="weapon-stat" style="color:#ee9; font-size:16px;">WAND MODE</span>
+    <div id="rune-eye-data" style="display:none; color:#0f0; margin-top:10px; border:1px solid #0f0; padding:10px; background:#0008;">SCANNING...</div>
+</div>
+<div id="fps">FPS: 0</div>
+<div id="menu">
+    <h1 style="text-shadow: 0 0 20px #d0f;">ARCANE MASTER</h1>
+    <p style="color: #aaa; font-size: 12px;">PRESS 'V' IN-GAME FOR MENU</p>
+    <button onclick="start(0)">SOLO</button><br>
+    <button onclick="start(1)">1v1 ONLINE</button><br>
+    <button onclick="start(2)">TRAINING</button>
+</div>
+<div id="spell-wheel">
+    <div id="btn-resume" class="wheel-btn" onclick="toggleMenu()">RESUME</div>
+    <div id="btn-settings" class="wheel-btn" onclick="toggleSettings(true)">SETTINGS</div>
+    <div id="btn-leave" class="wheel-btn" onclick="leaveGame()">LEAVE</div>
+</div>
+<div id="settings">
+    <div class="close-x" onclick="toggleSettings(false)">X</div>
+    <h2 style="color:#0f0; margin-top:0; text-align:center;">GRIMOIRE</h2>
+    <div class="setting-row"><span>PSX GRAPHICS (Retro)</span><input type="checkbox" id="psx-toggle" onchange="updateGraphics()"></div>
+    <div class="setting-row"><span>FOV: <span id="fov-val">75</span></span><input type="range" id="fov-slider" min="60" max="120" value="75" oninput="updateGraphics()"></div>
+    <hr style="border-color:#0f0">
+    <p style="font-size:14px;"><span class="key">T/Y</span>:Fist/Wand Mode | <span class="key">Z->X</span>: Rune Mode</p>
+    <hr style="border-color:#0f0">
+    <p><span class="key">GESTURES:</span></p>
+    <p><b>|</b> Line: Wind Blast</p>
+    <p><b>V</b> Shape: Fireball</p>
+    <p><b>Z</b> Shape: Astral Star</p>
+    <p><b>M</b> Shape: Tsunami</p>
+    <p><b>^</b> Triangle: Eagle Summon</p>
+    <p><b>S</b> Shape: Snake Summon (Rideable)</p>
+    <p><b>L</b> + Hold E: Mahoraga Summon</p>
+</div>
+<canvas id="w-layer"></canvas><canvas id="g-layer"></canvas>
+<script>
+let scene,cam,ren,isPlay=0,sc=0,hp=100,mn=100,pts=[],isDraw=0,isLook=0,objs=[],projs=[],parts=[],summons=[],k={},yv=0,dv=0;
+let wand, wandTip, rune, runeGroup, runeScale=0, recoil=0, lastCast={t:'', time:0};
+let oppMesh, lastSync=0, lastSend=0, isMulti=0, isTraining=0, spawnTimer, isMenu=0;
+let myBarrier=null, isFistMode = false, fists, rightFist, leftHand, droppedWandObj = null, fistRuneR, fistRuneL;
+let secretStep = 0, isRuneMode = false, runeBarrierActive = false, activePortal = null, runeBarrierObj = null;
+let runeCooldowns = { beam: 0, portal: 0, flare: 0, snake: 0, mahoraga: 0 }, lastFrameTime = 0, frameCount = 0;
+let isRiding = false, rideTarget = null; 
+let GEO = {}, MAT = {}; 
+
+const gc=document.getElementById('g-layer'), ctx=gc.getContext('2d');
+const evs=['mousedown','mousemove','mouseup','touchstart','touchmove','touchend'];
+
+window.onerror = function(msg) { console.log("Suppressing:", msg); return true; };
+
+let app, auth, db, userId, matchId, isHost, unsub; const appId = typeof __app_id !== 'undefined' ? __app_id : 'default';
+function initAuth(){ try { const c=JSON.parse(__firebase_config); app=firebase.initializeApp(c); auth=firebase.auth(); db=firebase.firestore(); if(typeof __initial_auth_token!=='undefined')auth.signInWithCustomToken(__initial_auth_token); else auth.signInAnonymously(); auth.onAuthStateChanged(u=>{if(u)userId=u.uid}); } catch(e){} } initAuth();
+
+const Aud = new (window.AudioContext || window.webkitAudioContext)();
+function sfx(t) {
+    if(!Aud) return;
+    if(Aud.state==='suspended') Aud.resume(); 
+    const now=Aud.currentTime;
+    const osc=Aud.createOscillator(), gain=Aud.createGain(), filter=Aud.createBiquadFilter();
+    osc.connect(filter); filter.connect(gain); gain.connect(Aud.destination);
+    osc.type = 'sine'; filter.type = 'lowpass'; filter.frequency.value = 2000;
+    
+    if(t === 'f' || t === 'flare' || t === 'expl' || t === 'k_flare') { 
+        const bSize = Aud.sampleRate * 0.5; const b = Aud.createBuffer(1, bSize, Aud.sampleRate); const d = b.getChannelData(0);
+        for(let i=0;i<bSize;i++) d[i] = Math.random()*2-1;
+        const nSrc = Aud.createBufferSource(); nSrc.buffer = b; nSrc.connect(filter);
+        filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now+0.4);
+        gain.gain.setValueAtTime(0.8, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.4);
+        nSrc.start(now); return;
+    }
+    else if(t === 'water' || t === 'tsunami') { 
+        const bSize = Aud.sampleRate; const b = Aud.createBuffer(1, bSize, Aud.sampleRate); const d = b.getChannelData(0);
+        for(let i=0;i<bSize;i++) d[i] = Math.random()*2-1;
+        const nSrc = Aud.createBufferSource(); nSrc.buffer = b; nSrc.connect(filter);
+        filter.type = 'bandpass'; filter.frequency.setValueAtTime(400, now); filter.Q.value = 5;
+        gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now+1.0);
+        nSrc.start(now); return;
+    }
+    else if(t === 'wind') { 
+        const bSize = Aud.sampleRate; const b = Aud.createBuffer(1, bSize, Aud.sampleRate); const d = b.getChannelData(0);
+        for(let i=0;i<bSize;i++) d[i] = Math.random()*2-1;
+        const nSrc = Aud.createBufferSource(); nSrc.buffer = b; nSrc.connect(filter);
+        filter.type = 'highpass'; filter.frequency.setValueAtTime(1000, now);
+        gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
+        nSrc.start(now); return;
+    }
+    else if(t === 'astral' || t === 'portal') { 
+        osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(1200, now+0.2);
+        gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.6);
+    }
+    else if(t === 'snake') { 
+        const bSize = Aud.sampleRate * 0.5; const b = Aud.createBuffer(1, bSize, Aud.sampleRate); const d = b.getChannelData(0);
+        for(let i=0;i<bSize;i++) d[i] = Math.random()*2-1;
+        const nSrc = Aud.createBufferSource(); nSrc.buffer = b; nSrc.connect(filter);
+        filter.type = 'highpass'; filter.frequency.setValueAtTime(2000, now);
+        gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now+0.5);
+        nSrc.start(now); return;
+    }
+    else if(t === 'eagle') { 
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1500, now); osc.frequency.exponentialRampToValueAtTime(800, now+0.4);
+        gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.4);
+    }
+    else if(t === 'mahoraga') { 
+        osc.type = 'square'; osc.frequency.setValueAtTime(100, now);
+        filter.type = 'lowpass'; filter.frequency.value = 300;
+        gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0, now+1.0);
+    }
+    else if(t === 'l') { 
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1000, now); osc.frequency.exponentialRampToValueAtTime(100, now+0.3);
+        gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.3);
+    }
+    osc.start(now); osc.stop(now+1.0);
+}
+
+// Face Texture Generation
+function createFaceTexture() {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const x = c.getContext('2d');
+    x.fillStyle = '#ccaa00'; x.fillRect(0,0,128,128); // Skin Base
+    // Eyes
+    x.fillStyle = '#ff0000';
+    x.beginPath(); x.moveTo(20,40); x.lineTo(50,50); x.lineTo(20,60); x.fill(); // L
+    x.beginPath(); x.moveTo(108,40); x.lineTo(78,50); x.lineTo(108,60); x.fill(); // R
+    // Mouth
+    x.fillStyle = '#000'; x.beginPath(); x.arc(64, 90, 25, 0, Math.PI, false); x.fill();
+    x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.moveTo(40,90); x.lineTo(88,90); x.stroke(); // Teeth
+    
+    const tex = new THREE.CanvasTexture(c); tex.magFilter = THREE.NearestFilter; return tex;
+}
+
+function init(){
+  try {
+      scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x050510,0.02);
+      cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1e3); cam.rotation.order='YXZ'; cam.position.set(0,2,10); scene.add(cam);
+      
+      const boltShape = new THREE.Shape();
+      boltShape.moveTo(0,0); boltShape.lineTo(0.2,1); boltShape.lineTo(0,1); boltShape.lineTo(0.2,2); 
+      boltShape.lineTo(-0.2,1.2); boltShape.lineTo(0,1.2); boltShape.lineTo(-0.2,0);
+      const boltGeo = new THREE.ExtrudeGeometry(boltShape, {depth:0.1, bevelEnabled:false});
+
+      const faceTex = createFaceTexture();
+
+      GEO = { 
+        e: new THREE.BoxGeometry(1.5,1.5,1.5), l: new THREE.CylinderGeometry(.2,.2,4), w: new THREE.BoxGeometry(6,.5,2),
+        f: new THREE.SphereGeometry(1), b: new THREE.BoxGeometry(3.5,3.5,3.5), p: new THREE.SphereGeometry(0.15, 4, 4), 
+        hitbox: new THREE.WireframeGeometry(new THREE.BoxGeometry(1.5,2.5,1.5)), water: new THREE.IcosahedronGeometry(0.6, 1), 
+        astral: new THREE.ExtrudeGeometry(new THREE.Shape().moveTo(0,0.6).lineTo(0.2,0.2).lineTo(0.6,0.2).lineTo(0.3,-0.1).lineTo(0.4,-0.5).lineTo(0,-0.3).lineTo(-0.4,-0.5).lineTo(-0.3,-0.1).lineTo(-0.6,0.2).lineTo(-0.2,0.2).lineTo(0,0.6), {depth:0.2, bevelEnabled:false}), 
+        dummy: new THREE.CylinderGeometry(1, 1, 3, 16), beam: new THREE.CylinderGeometry(0.3, 0.5, 30),
+        snakeHead: new THREE.ConeGeometry(0.8, 2, 8), snakeBody: new THREE.SphereGeometry(0.7, 8, 8),
+        eagle: new THREE.ConeGeometry(0.5, 1, 4), eagleWing: new THREE.BoxGeometry(1.5, 0.1, 0.5),
+        maho: new THREE.BoxGeometry(2.5, 3.5, 1.5), mahoHead: new THREE.BoxGeometry(1.5, 1.5, 1.5), mahoWheel: new THREE.TorusGeometry(1.5, 0.2, 4, 8),
+        mahoArm: new THREE.BoxGeometry(0.8, 2.5, 0.8),
+        bolt: boltGeo
+      }; 
+      MAT = { 
+        e: new THREE.MeshPhongMaterial({color:0xf00}), l: new THREE.MeshBasicMaterial({color:0xffff00}), 
+        w: new THREE.MeshBasicMaterial({color:0x00ffaa,transparent:true,opacity:.6}), 
+        f: new THREE.MeshBasicMaterial({color:0xff6600}), 
+        flare: new THREE.MeshBasicMaterial({color:0xffaa00}), water: new THREE.MeshPhongMaterial({color:0x0088ff,transparent:true,opacity:0.7, shininess: 100}), 
+        astral: new THREE.MeshBasicMaterial({color:0xff00ff}), b: new THREE.MeshPhongMaterial({color:0x0044ff,transparent:true,opacity:0.4,side:THREE.DoubleSide}), 
+        hitbox: new THREE.LineBasicMaterial({color:0xff0000}), merge: new THREE.MeshBasicMaterial({color:0xaa00ff}), 
+        expl: new THREE.MeshBasicMaterial({color:0xff5500}), dummy: new THREE.MeshPhongMaterial({color:0x00ff00}),
+        rune: new THREE.MeshBasicMaterial({color:0xffd700}), beam: new THREE.MeshBasicMaterial({color:0xff8800, transparent:true, opacity:0.8}),
+        ice: new THREE.MeshPhongMaterial({color:0x00ffff, transparent:true, opacity:0.8}),
+        snake: new THREE.MeshPhongMaterial({color:0x00ff00}), venom: new THREE.MeshBasicMaterial({color:0x88ff00}),
+        maho: new THREE.MeshPhongMaterial({color:0xffcc00}), mahoFace: new THREE.MeshBasicMaterial({map: faceTex}),
+        divine: new THREE.MeshBasicMaterial({color:0xffd700}),
+        world: new THREE.MeshBasicMaterial({color:0xff0000}), // World Slash
+        eagle: new THREE.MeshBasicMaterial({color:0xffffff}),
+        wind: new THREE.MeshBasicMaterial({color:0xccffcc, transparent:true, opacity:0.2})
+      };
+      GEO.l.rotateX(1.57); GEO.beam.rotateX(1.57); GEO.snakeHead.rotateX(-1.57); GEO.eagle.rotateX(1.57); GEO.bolt.rotateX(1.57);
+
+      wand=new THREE.Group(); let a=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.15,0.6),new THREE.MeshPhongMaterial({color:0xeebb99})); a.position.set(0,0,0.3); wand.add(a);
+      let s=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.03,0.8),new THREE.MeshPhongMaterial({color:0x8b4513})); s.rotation.x=-1.57; s.position.set(0,0,-0.2);
+      wandTip=new THREE.Mesh(new THREE.SphereGeometry(0.06),new THREE.MeshBasicMaterial({color:0x00ffff})); wandTip.position.set(0,0.4,0);
+      runeGroup=createRune(); runeGroup.rotation.x=1.57; runeGroup.position.set(0,0.2,0); runeGroup.scale.set(0,0,0);
+      wandTip.add(runeGroup); s.add(wandTip); wand.add(s); wand.position.set(0.3,-0.3,-0.5); cam.add(wand);
+
+      fists=new THREE.Group();
+      leftHand=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.12),new THREE.MeshPhongMaterial({color:0xeebb99})); leftHand.position.set(-0.3,-0.3,-0.4);
+      fistRuneL=createRune(); fistRuneL.position.z=-0.2; fistRuneL.visible=false; leftHand.add(fistRuneL);
+      fists.add(leftHand);
+      rightFist=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.12),new THREE.MeshPhongMaterial({color:0xeebb99})); rightFist.position.set(0.3,-0.3,-0.4);
+      fistRuneR=createRune(); fistRuneR.position.z=-0.2; fistRuneR.scale.set(0,0,0); rightFist.add(fistRuneR);
+      fists.add(rightFist); fists.visible=false; cam.add(fists);
+
+      runeBarrierObj=createRune(); runeBarrierObj.scale.set(3,3,3); runeBarrierObj.visible=false; cam.add(runeBarrierObj);
+
+      oppMesh=new THREE.Group(); oppMesh.add(new THREE.LineSegments(GEO.hitbox,MAT.hitbox)); oppMesh.add(new THREE.Mesh(new THREE.BoxGeometry(1,2,1),new THREE.MeshPhongMaterial({color:0x555555}))); oppMesh.visible=false; scene.add(oppMesh);
+
+      ren=new THREE.WebGLRenderer({canvas:document.getElementById('w-layer')}); ren.setSize(innerWidth,innerHeight);
+      scene.add(new THREE.AmbientLight(0x404040), new THREE.PointLight(0xffffff,1,100).translateY(10), new THREE.GridHelper(200,50,0x4444ff,0x111122));
+      window.onresize=()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight);gc.width=innerWidth;gc.height=innerHeight;};
+      animate(0);
+  } catch(e) { console.error("Init failed", e); }
+}
+
+function createRune() {
+    let g=new THREE.Group(), r1=new THREE.Mesh(new THREE.TorusGeometry(0.15,0.005,8,32),new THREE.MeshBasicMaterial({color:0xffd700})), r2=new THREE.Mesh(new THREE.RingGeometry(0.1,0.11,3),new THREE.MeshBasicMaterial({color:0xffd700,side:THREE.DoubleSide})), r3=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.05),new THREE.MeshBasicMaterial({color:0xffd700}));
+    g.add(r1); g.add(r2); g.add(r3); return g;
+}
+
+window.updateGraphics=()=>{
+    const p=document.getElementById('psx-toggle').checked; ren.setPixelRatio(p?0.2:window.devicePixelRatio);
+    ren.domElement.style.imageRendering=p?'pixelated':'auto'; gc.style.imageRendering=p?'pixelated':'auto';
+    const f=document.getElementById('fov-slider').value; document.getElementById('fov-val').innerText=f; cam.fov=f; cam.updateProjectionMatrix();
+}
+window.toggleMenu=()=>{isMenu=!isMenu; document.getElementById('spell-wheel').style.display=isMenu?'block':'none'; if(isMenu){if(document.exitPointerLock)document.exitPointerLock();document.getElementById('settings').style.display='none'}else{if(document.body.requestPointerLock)document.body.requestPointerLock()}}
+window.toggleSettings=(s)=>{document.getElementById('settings').style.display=s?'block':'none';document.getElementById('spell-wheel').style.display=s?'none':'block'}
+window.leaveGame=()=>{isPlay=0;isMenu=0;document.getElementById('spell-wheel').style.display='none';document.getElementById('menu').style.display='block';if(spawnTimer)clearTimeout(spawnTimer);objs.forEach(e=>scene.remove(e));objs=[];projs.forEach(p=>scene.remove(p.m));projs=[];summons.forEach(s=>scene.remove(s.m));summons=[];if(droppedWandObj){scene.remove(droppedWandObj);droppedWandObj=null}isFistMode=false;wand.visible=true;fists.visible=false;isRuneMode=false;runeBarrierActive=false;activePortal=null;if(fistRuneL)fistRuneL.visible=false;if(runeBarrierObj)runeBarrierObj.visible=false;document.getElementById('weapon-stat').innerText="WAND MODE";isRiding=false;}
+
+window.start = async (mode) => {
+    try {
+        if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+    } catch(e) {} 
+    if(spawnTimer) clearTimeout(spawnTimer); 
+    isMulti = (mode === 1); 
+    isTraining = (mode === 2);
+    document.getElementById('menu').style.display='none'; 
+    isPlay=1; hp=100; mn=100; sc=0; 
+    objs.forEach(e=>scene.remove(e)); objs=[];
+    document.getElementById('h').innerText="100"; document.getElementById('eh').innerText="100"; document.getElementById('opp_stat').style.display=isMulti?'inline':'none'; document.getElementById('status').innerText=isTraining?"TRAINING":(isMulti?"SEARCHING...":"SOLO");
+    if(isTraining) { spawnDummy(); return; }
+    if(!isMulti) { spawn(); return; }
+    if(!userId || !db) { alert("Online unavailable"); isPlay=0; document.getElementById('menu').style.display='block'; return; }
+    try {
+        const matchesRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('matches');
+        const q = matchesRef.where('status','==','waiting').limit(1);
+        const snap = await q.get();
+        if (!snap.empty) { 
+            matchId = snap.docs[0].id; isHost=false; await matchesRef.doc(matchId).update({status:'playing', p2:userId, p2_data: { hp: 100, x:0, y:2, z:10, rx:0, ry:0, rz:0 } }); document.getElementById('status').innerText = "VS ENEMY"; 
+        } else { 
+            const newRef = await matchesRef.add({status:'waiting', p1:userId, p1_data: { hp: 100, x:0, y:2, z:10, rx:0, ry:0, rz:0 } }); matchId = newRef.id; isHost=true; document.getElementById('status').innerText = "WAITING..."; 
+        }
+        unsub = matchesRef.doc(matchId).onSnapshot((s) => {
+            if(!s.exists) return; const d = s.data();
+            if(d.status === 'playing') {
+                oppMesh.visible = true; let od = isHost ? d.p2_data : d.p1_data;
+                if(od) { oppMesh.position.set(od.x,od.y,od.z); oppMesh.rotation.set(od.rx,od.ry,od.rz); if(od.hp !== undefined) { document.getElementById('eh').innerText = Math.floor(od.hp); if(od.hp <= 0) { isPlay=0; document.getElementById('status').innerText = "VICTORY!"; setTimeout(()=>leaveGame(), 3000); } } }
+                let cd = isHost ? d.p2_cast : d.p1_cast; if(cd && cd.time > lastSync) { lastSync = cd.time; let q = new THREE.Quaternion().setFromEuler(new THREE.Euler(oppMesh.rotation.x, oppMesh.rotation.y, oppMesh.rotation.z, 'YXZ')); cast(cd.t, cd.big, true, oppMesh.position, q); }
+            }
+        });
+    } catch(e) { isPlay=0; document.getElementById('menu').style.display='block'; }
+}
+
+function dropWand(){if(isFistMode)return;isFistMode=true;wand.visible=false;fists.visible=true;droppedWandObj=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,1),new THREE.MeshPhongMaterial({color:0x8b4513}));droppedWandObj.rotation.z=1.57;let d=cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));d.y=0.2;droppedWandObj.position.copy(d);scene.add(droppedWandObj);document.getElementById('weapon-stat').innerText="FIST MODE";}
+function pickupWand(){if(!isFistMode||!droppedWandObj)return;if(cam.position.distanceTo(droppedWandObj.position)<2){isFistMode=false;wand.visible=true;fists.visible=false;isRuneMode=false;runeBarrierActive=false;if(fistRuneL)fistRuneL.visible=false;if(runeBarrierObj)runeBarrierObj.visible=false;scene.remove(droppedWandObj);droppedWandObj=null;document.getElementById('weapon-stat').innerText="WAND MODE";}}
+
+function spawnTrail(p){
+    if(Math.random()>0.4)return;
+    let color=0xffffff;
+    if(p.t.includes('f') || p.t.includes('flare')) color=0xff6600;
+    else if(MAT[p.t.split('_')[0]]) color=MAT[p.t.split('_')[0]].color;
+    else if(p.t === 'divine') color=0xffd700;
+    else if(p.t === 'world_slash') color=0xff0000;
+    let m=new THREE.Mesh(GEO.p,new THREE.MeshBasicMaterial({color:color}));
+    m.position.copy(p.m.position).add(new THREE.Vector3((Math.random()-.5)*.5,(Math.random()-.5)*.5,(Math.random()-.5)*.5));
+    m.scale.set(0.5,0.5,0.5); parts.push({m,v:new THREE.Vector3(0,p.t=='water'?-0.05:0.05,0),life:15,maxLife:15}); scene.add(m);
+}
+function explode(p){ sfx('expl'); for(let i=0;i<40;i++){ let m=new THREE.Mesh(GEO.p,MAT.expl); m.position.copy(p); m.scale.set(2,2,2); parts.push({m,v:new THREE.Vector3(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar(0.8),life:30}); scene.add(m); }}
+function fx(p,c,n){ for(let i=0;i<n;i++){ let m=new THREE.Mesh(GEO.p,new THREE.MeshBasicMaterial({color:c.color})); m.position.copy(p); m.scale.set(1,1,1); parts.push({m,v:new THREE.Vector3(Math.random()-.5,Math.random()-.5,Math.random()-.5).multiplyScalar(0.3),life:20}); scene.add(m); }}
+
+onkeydown=e=>{
+    k[e.key.toLowerCase()]=1; let key=e.key.toLowerCase();
+    if(key === 'i') cast('f');
+    if(isFistMode&&!isRuneMode){ if(key==='z')secretStep=1; else if(key==='x'&&secretStep===1){isRuneMode=true;document.getElementById('weapon-stat').innerText="SPELL RUNE ACTIVATED";fistRuneL.visible=true;fistRuneL.scale.set(1,1,1);fistRuneR.scale.set(1,1,1);sfx('astral');}else secretStep=0; }
+    if(isRuneMode&&isPlay){
+        if(key==='g')castRune('beam'); if(key==='h')castRune('portal'); 
+        if(key==='j')castRune('snake'); if(key==='k')castRune('mahoraga'); 
+        if(key==='n')castRune('eyes');
+        if(key==='l'){runeBarrierActive=!runeBarrierActive;sfx('b');document.getElementById('weapon-stat').innerText=runeBarrierActive?"GOD BARRIER ON":"GOD BARRIER OFF";if(runeBarrierObj)runeBarrierObj.visible=runeBarrierActive;}
+    }
+    if(key==='v'&&isPlay)toggleMenu(); if(key==='t'&&isPlay)dropWand(); if(key==='y'&&isPlay)pickupWand(); if(key===' ' && isRiding) { isRiding = false; cam.position.y += 2; }
+    if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key))e.preventDefault();
+};
+onkeyup=e=>k[e.key.toLowerCase()]=0; window.oncontextmenu=e=>e.preventDefault(); evs.forEach(e=>gc.addEventListener(e,inp));
+
+function castRune(t){
+    let now=Date.now(), cdMap={'beam':'g','portal':'h','snake':'j','mahoraga':'k'}, key=cdMap[t];
+    if(key){ let cd={g:2000,h:1500,j:5000,k:10000}[key] || 1000; if(now<(runeCooldowns[key]||0))return; runeCooldowns[key]=now+cd; }
+    if(t==='beam'){
+        sfx('beam'); let g=new THREE.Group(); g.position.copy(cam.position).add(cam.getWorldDirection(new THREE.Vector3()).multiplyScalar(2)); g.quaternion.copy(cam.quaternion);
+        let r=createRune(); r.scale.set(2,2,2); r.userData={isSpinner:true}; g.add(r);
+        let b=new THREE.Mesh(GEO.beam,MAT.beam); b.rotation.x=1.57; b.position.z=-15; g.add(b); scene.add(g);
+        let rc=new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(0,0),cam); let hits=rc.intersectObjects(objs);
+        hits.forEach(h=>{h.object.userData.hp-=70;fx(h.point,MAT.beam,20)});
+        let st=0, iv=setInterval(()=>{r.rotation.z-=0.5; st++; if(st>20){clearInterval(iv);scene.remove(g)}},30);
+    } else if(t==='portal'){
+        if(!activePortal){sfx('portal');activePortal=createRune();activePortal.scale.set(25,25,25);activePortal.position.copy(cam.position).add(cam.getWorldDirection(new THREE.Vector3()).multiplyScalar(30));activePortal.lookAt(cam.position);scene.add(activePortal);}
+        else{sfx('portal');cam.position.copy(activePortal.position);scene.remove(activePortal);activePortal=null;}
+    } else if(t==='eyes'){
+        sfx('b'); let ui=document.getElementById('rune-eye-data'); let rc=new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(0,0),cam); let hits=rc.intersectObjects(objs);
+        ui.innerHTML=hits.length>0?`TARGET LOCKED<br>HP: ${Math.floor(hits[0].object.userData.hp)}`:"NO TARGET"; ui.style.display='block'; setTimeout(()=>ui.style.display='none',2000);
+    } else if(t==='k_flare'){
+        sfx('flare'); let m=createRune(); m.children.forEach(c=>c.material=MAT.flare); m.scale.set(1.5,1.5,1.5); m.position.copy(cam.position); m.quaternion.copy(cam.quaternion);
+        let v=new THREE.Vector3(0,0,-3).applyQuaternion(cam.quaternion); scene.add(m); explode(m.position); projs.push({m,t:'flare_rune',v,l:100,dmg:60,fromRemote:false});
+    } else if(t==='snake') spawnSummon('snake'); else if(t==='mahoraga') spawnSummon('mahoraga');
+}
+
+function inp(e){
+  if(!isPlay||isMenu)return; if(e.button==2){isLook=e.type=='mousedown';return} if(isLook&&e.type=='mousemove'){cam.rotation.y-=e.movementX*0.003;cam.rotation.x=Math.max(-1.5,Math.min(1.5,cam.rotation.x-e.movementY*0.003));return}
+  let x,y; if(e.touches&&e.touches.length>0){x=e.touches[0].clientX;y=e.touches[0].clientY}else if(e.changedTouches){x=e.changedTouches[0].clientX;y=e.changedTouches[0].clientY}else{x=e.clientX;y=e.clientY}
+  if(e.type.includes('down')&&x!=null){isDraw=1;pts=[{x,y}];ctx.clearRect(0,0,gc.width,gc.height)}
+  else if(e.type.includes('move')&&isDraw&&x!=null){pts.push({x,y});ctx.strokeStyle="#0ff";ctx.lineWidth=4;ctx.beginPath();if(pts.length>1){ctx.moveTo(pts[pts.length-2].x,pts[pts.length-2].y);ctx.lineTo(x,y);ctx.stroke()}}
+  else if(e.type.includes('up')&&isDraw){isDraw=0;ctx.clearRect(0,0,gc.width,gc.height);check()}
+}
+
+function check(){
+  if(pts.length<5)return; let xs=pts.map(p=>p.x), ys=pts.map(p=>p.y), w=Math.max(...xs)-Math.min(...xs), h=Math.max(...ys)-Math.min(...ys), r=w/(h||0.1), dist=Math.hypot(pts[0].x-pts[pts.length-1].x,pts[0].y-pts[pts.length-1].y), closed=dist<(w+h)*0.35, type='f';
+  let isTsunami = !closed && pts[Math.floor(pts.length/2)].y < Math.min(...ys)+h*0.4 && r > 1.0; 
+  if (r < 0.8 && !closed) type = 'wind'; else if (r > 2.0 && !closed && !isTsunami) type = 'water'; 
+  else if (closed) { if(r < 0.6) { if(k['e']) type='mahoraga'; } else if(Math.abs(r-1)<0.6) { if(k['e']) type='flare'; else type='b'; } } 
+  else { if(pts[Math.floor(pts.length/2)].y < Math.min(...ys)+h*0.3) type = 'eagle'; else if(pts.length > 20 && pts[0].y < pts[pts.length-1].y && r < 0.8) type = 'snake'; else if(isTsunami) type = 'tsunami'; else if (pts[0].x < pts[pts.length-1].x && pts[0].y < pts[pts.length-1].y) type = 'astral'; else type='f'; }
+  cast(type);
+}
+
+function cast(t, big, fromRemote=false, remotePos=null, remoteQuat=null){
+  if(isFistMode && !isRuneMode && !fromRemote) { if(!['f','flare','astral','tsunami','eagle','snake','mahoraga','wind'].includes(t)) return; }
+  if(isRuneMode && !fromRemote) return;
+  if(!fromRemote) {
+    let now=Date.now();
+    let cost=10; if(t=='mahoraga')cost=100; if(t=='snake')cost=60; if(t=='eagle')cost=50; if(t=='tsunami')cost=40;
+    if(mn<cost)return; mn-=cost; document.getElementById('m').innerText=Math.floor(mn);
+    if(isMulti && matchId && db) db.collection('artifacts').doc(appId).collection('public').doc('data').collection('matches').doc(matchId).update({[isHost?'p1_cast':'p2_cast']:{t,big,time:now}}).catch(()=>{});
+  }
+  sfx(t.split('_')[0]);
+  if(!fromRemote){ recoil=0.5; if(!isFistMode) wandTip.material.color.copy((MAT[t]||MAT.l).color); }
+  if (t === 'mahoraga') { spawnSummon('mahoraga', remotePos, remoteQuat); return; }
+  if (t === 'snake') { spawnSummon('snake', remotePos, remoteQuat); return; }
+  if (t === 'eagle') { spawnSummon('eagle', remotePos, remoteQuat); return; }
+  if (t === 'b') {
+      let b = new THREE.Mesh(GEO.b, MAT.b);
+      if(fromRemote) { b.position.copy(remotePos); } else { cam.add(b); b.position.set(0,0,0); myBarrier=b; } 
+      setTimeout(()=>{ if(b.parent) b.parent.remove(b); if(b===myBarrier) myBarrier=null; }, 2000); return; 
+  }
+  let m;
+  if(t=='tsunami') { m = new THREE.Group(); for(let i=0; i<15; i++) { let b = new THREE.Mesh(GEO.water, MAT.water); b.position.set((Math.random()-0.5)*4, (Math.random())*2, (Math.random()-0.5)*2); m.add(b); } } 
+  else if(t.includes('plasma')) m=new THREE.Mesh(new THREE.TorusGeometry(1,0.4,16,100),MAT.merge);
+  else if(t.includes('tesla')) m=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5,1),MAT.l);
+  else if(t=='water') { m = new THREE.Group(); for(let i=0; i<5; i++) { let b = new THREE.Mesh(GEO.water, MAT.water); b.position.set((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5); b.scale.set(0.5,0.5,0.5); m.add(b); } }
+  else if(t=='astral') m=new THREE.Mesh(GEO.astral, MAT.astral);
+  else if(t=='wind') { m = new THREE.Mesh(GEO.l, MAT.wind); m.scale.set(0.5, 3, 0.5); m.rotateX(1.57); }
+  else m=new THREE.Mesh(GEO[t]||GEO.f, MAT[t]||MAT.f);
+
+  let origin, rot;
+  if(fromRemote) { origin = remotePos; rot = remoteQuat; } 
+  else { rot = cam.quaternion; if(isFistMode) { let v=new THREE.Vector3(); rightFist.getWorldPosition(v); v.add(new THREE.Vector3(0,0,-0.5).applyQuaternion(cam.quaternion)); origin=v; } else origin=cam.position; }
+  if(!origin||!rot)return;
+  m.position.copy(origin); m.quaternion.copy(rot);
+  let s=big||t.includes('merge')?2.5:1; if(t=='flare') s=3; if(t=='tsunami') s=1; m.scale.set(s,s,s);
+  let v = new THREE.Vector3(0,0,-1).applyQuaternion(rot);
+  if(t=='l') v.multiplyScalar(2); else if(t=='flare') v.multiplyScalar(3); else if(t=='water') v.multiplyScalar(0.6); else if(t=='tsunami') v.multiplyScalar(0.4); else if(t=='wind') v.multiplyScalar(1.5); 
+  else if(t=='world_slash') v.multiplyScalar(0.2); // SLOW
+  else v.multiplyScalar(0.8);
+
+  if(t.includes('tesla')){v.set(0,0,0); m.position.add(new THREE.Vector3(0,0,-5).applyQuaternion(rot));}
+  let dmg=20; if(t.includes('merge'))dmg=70; if(t=='flare')dmg=50; if(t=='tsunami')dmg=40; if(t=='wind')dmg=25;
+  scene.add(m); if(t=='flare')explode(m.position); projs.push({m,t,v,l:100,dmg,fromRemote});
+}
+
+function spawnSummon(type, rPos, rRot) {
+    sfx('summon');
+    let start = rPos || cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()).multiplyScalar(3));
+    let rot = rRot || cam.quaternion;
+    
+    if (type === 'snake') {
+        let headGroup = new THREE.Group();
+        let mainHead = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 1.2), MAT.snake);
+        let eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({color:0xff0000}));
+        let eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({color:0xff0000}));
+        let tongue = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.5), new THREE.MeshBasicMaterial({color:0xff0000}));
+        eye1.position.set(0.3, 0.2, 0.4); eye2.position.set(-0.3, 0.2, 0.4); tongue.position.set(0, -0.2, 0.6);
+        headGroup.add(mainHead); headGroup.add(eye1); headGroup.add(eye2); headGroup.add(tongue);
+        headGroup.position.copy(start); headGroup.quaternion.copy(rot);
+        let body = []; for(let i=1; i<12; i++) { let size = 0.7 * (1 - (i/15)); let seg = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 8), MAT.snake); seg.position.copy(start).add(new THREE.Vector3(0,0,i*0.5).applyQuaternion(rot)); scene.add(seg); body.push(seg); }
+        scene.add(headGroup); summons.push({m: headGroup, body: body, t: 'snake', hp: 500, life: 1200, target: null});
+    } else if (type === 'eagle') {
+        let eagleGrp = new THREE.Group(); let body = new THREE.Mesh(GEO.eagle, MAT.eagle); let lWing = new THREE.Mesh(GEO.eagleWing, MAT.eagle); lWing.position.set(-0.8, 0.5, 0); let rWing = new THREE.Mesh(GEO.eagleWing, MAT.eagle); rWing.position.set(0.8, 0.5, 0);
+        body.add(lWing); body.add(rWing); eagleGrp.add(body); eagleGrp.position.copy(start); eagleGrp.position.y += 3; scene.add(eagleGrp); summons.push({m: eagleGrp, t: 'eagle', hp: 200, life: 1200, cooldown: 0, lWing, rWing});
+    } else if (type === 'mahoraga') {
+        let g = new THREE.Group();
+        let body = new THREE.Mesh(GEO.maho, MAT.maho);
+        const headMats = [MAT.maho, MAT.maho, MAT.maho, MAT.maho, MAT.mahoFace, MAT.maho];
+        let head = new THREE.Mesh(GEO.mahoHead, headMats); head.position.y = 2.5;
+        let lArm = new THREE.Mesh(GEO.mahoArm, MAT.maho); lArm.position.set(-1.8, 0.5, 0);
+        let rArm = new THREE.Mesh(GEO.mahoArm, MAT.maho); rArm.position.set(1.8, 0.5, 0);
+        let lShoulder = new THREE.Group(); lShoulder.position.set(-1.8, 2.5, 0); lShoulder.add(lArm); lArm.position.set(0, -1.25, 0);
+        let rShoulder = new THREE.Group(); rShoulder.position.set(1.8, 2.5, 0); rShoulder.add(rArm); rArm.position.set(0, -1.25, 0);
+        let wheel = new THREE.Mesh(GEO.mahoWheel, MAT.rune); wheel.rotation.x = 1.57; wheel.position.y = 4.0;
+        g.add(body); g.add(head); g.add(wheel); g.add(lShoulder); g.add(rShoulder);
+        g.position.copy(start); scene.add(g);
+        summons.push({m: g, t: 'mahoraga', hp: 1000, life: 1200, state: 'idle', timer: 0, lArm: lShoulder, rArm: rShoulder});
+    }
+}
+
+function animate(frameTime){
+  requestAnimationFrame(animate); 
+  try {
+    if(frameTime-lastFrameTime>=1000){document.getElementById('fps').innerText="FPS: "+frameCount;frameCount=0;lastFrameTime=frameTime} frameCount++;
+    if(isPlay&&!isMenu){
+      if(mn<100)mn+=0.1; document.getElementById('m').innerText=Math.floor(mn);
+      yv-=0.02; cam.position.y+=yv; if(cam.position.y<=2){cam.position.y=2;yv=0;if(k[' '])yv=0.5;}
+      if(k['q']&&dv<=0.1)dv=2.0; dv*=0.85; let s=0.3+dv, y=cam.rotation.y;
+      let moving = k['w'] || k['s'] || k['a'] || k['d'];
+      if(!isRiding) {
+          if(k['w']){cam.position.x-=Math.sin(y)*s;cam.position.z-=Math.cos(y)*s} if(k['s']){cam.position.x+=Math.sin(y)*s;cam.position.z+=Math.cos(y)*s}
+          if(k['a']){cam.position.x-=Math.cos(y)*s;cam.position.z+=Math.sin(y)*s} if(k['d']){cam.position.x+=Math.cos(y)*s;cam.position.z-=Math.sin(y)*s}
+      } else if (rideTarget) {
+          cam.position.copy(rideTarget.m.position).add(new THREE.Vector3(0, 2, 0));
+          if(k['w']) rideTarget.m.translateZ(0.2); if(k['a']) rideTarget.m.rotateY(0.05); if(k['d']) rideTarget.m.rotateY(-0.05);
+      }
+      if(isMulti&&matchId&&Date.now()-lastSend>100&&db){lastSend=Date.now();db.collection('artifacts').doc(appId).collection('public').doc('data').collection('matches').doc(matchId).update({[isHost?'p1_data':'p2_data']:{x:cam.position.x,y:cam.position.y,z:cam.position.z,rx:cam.rotation.x,ry:cam.rotation.y,rz:cam.rotation.z,hp:hp}}).catch(()=>{})}
+      for(let i=projs.length-1;i>=0;i--){
+        let p=projs[i]; p.m.position.add(p.v); p.l--; p.m.updateMatrixWorld(); spawnTrail(p);
+        if(p.t=='flare_rune')p.m.rotation.z-=0.2; if(p.t=='water')p.m.rotation.x+=0.05;
+        let hit=-1, targets=isMulti?(p.fromRemote?[]:[oppMesh]):objs;
+        if(p.fromRemote&&p.m.position.distanceTo(cam.position)<1.5){ if(myBarrier||runeBarrierActive){if(p.t!=='flare'){scene.remove(p.m);projs.splice(i,1);fx(cam.position,MAT.b,5);continue}} hp-=p.dmg;document.getElementById('h').innerText=Math.floor(hp);fx(cam.position,MAT.l,10);scene.remove(p.m);projs.splice(i,1);if(hp<=0){isPlay=0;document.getElementById('status').innerText="DEFEAT";setTimeout(()=>leaveGame(),3000)} continue; }
+        for(let j=0;j<targets.length;j++){let e=targets[j];e.updateMatrixWorld();if(new THREE.Box3().setFromObject(p.m).intersectsBox(new THREE.Box3().setFromObject(e))){hit=j;break}}
+        if(hit>-1&&!p.fromRemote){
+           let e=targets[hit]; fx(e.position,MAT[p.t]||MAT.hitbox,10);
+           if(!isMulti){ if(e.userData.isDummy){e.userData.hp=999;document.getElementById('status').innerText="HIT: "+p.dmg;e.position.y=1.8;setTimeout(()=>e.position.y=1.5,100)} else{e.userData.hp-=p.dmg;if(e.userData.hp<=0){scene.remove(e);objs.splice(hit,1);sc+=10;document.getElementById('s').innerText=sc}} }
+           if(p.t.includes('flare'))explode(p.m.position); if(!p.t.includes('merge')&&!p.t.includes('flare')){scene.remove(p.m);projs.splice(i,1);p.l=0;continue}
+        }
+        if(p.l<=0){scene.remove(p.m);projs.splice(i,1)}
+      }
+
+      for(let i=summons.length-1; i>=0; i--) {
+          let s = summons[i]; s.life--; if(s.life <= 0) { if(s.body) s.body.forEach(seg => scene.remove(seg)); scene.remove(s.m); if(s === rideTarget) { isRiding = false; rideTarget = null; cam.position.y += 2; } summons.splice(i, 1); continue; }
+          if(s.t === 'eagle') {
+              s.m.position.add(new THREE.Vector3(Math.sin(frameTime*0.002)*0.1, Math.cos(frameTime*0.003)*0.05, Math.cos(frameTime*0.002)*0.1)); s.m.lookAt(cam.position); 
+              s.m.children[0].children[0].rotation.z = Math.sin(frameTime*0.01) * 0.5; s.m.children[0].children[1].rotation.z = -Math.sin(frameTime*0.01) * 0.5;
+              if(Math.random()<0.1) fx(s.m.position, MAT.l, 2);
+              if (Math.random() < 0.02) { let t = objs.length > 0 ? objs[0] : null; if (t) { let v = t.position.clone().sub(s.m.position).normalize().multiplyScalar(2); let b = new THREE.Mesh(GEO.bolt, MAT.l); b.position.copy(s.m.position); b.lookAt(t.position); b.rotateX(1.57); scene.add(b); projs.push({m:b, t:'l', v:v, l:50, dmg:40}); sfx('l'); } }
+          } else if (s.t === 'snake') {
+              if (s === rideTarget) { let pp = s.m.position; s.body.forEach((seg, idx) => { let d = seg.position.distanceTo(pp); if (d > 0.4) { seg.lookAt(pp); seg.position.lerp(pp, 0.2); } pp = seg.position; }); } else { s.m.rotation.y = Math.sin(frameTime*0.001); }
+              if(cam.position.distanceTo(s.m.position) < 2 && !isRiding && k[' ']==0) { isRiding = true; rideTarget = s; }
+              if(Math.random() < 0.01) { let v = s.m.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.5); let b = new THREE.Mesh(GEO.p, MAT.venom); b.position.copy(s.m.position); scene.add(b); projs.push({m:b, t:'water', v:v, l:50, dmg:40}); }
+          } else if (s.t === 'mahoraga') {
+              s.m.children[2].rotation.z += 0.05; s.timer++;
+              if(s.life < 400 && s.life % 60 === 0) { // Regeneration
+                  s.m.children[2].rotation.z += 1.0; 
+                  s.hp += 50; fx(s.m.position, MAT.l, 10);
+              }
+              let target = objs.length > 0 ? objs[0] : null;
+              if (target) {
+                  let dist = s.m.position.distanceTo(target.position);
+                  s.m.lookAt(target.position);
+                  if (dist > 15) { 
+                       // 30% World Slash, 70% Divine Slash
+                       if(s.timer % 120 === 0) {
+                           let isWorld = Math.random() < 0.3;
+                           let v = target.position.clone().sub(s.m.position).normalize().multiplyScalar(isWorld ? 0.3 : 1.5);
+                           let mat = isWorld ? MAT.world : MAT.divine;
+                           let geo = isWorld ? new THREE.BoxGeometry(4, 0.1, 0.5) : new THREE.BoxGeometry(2, 0.2, 0.5);
+                           let slash = new THREE.Mesh(geo, mat);
+                           slash.position.copy(s.m.position).add(new THREE.Vector3(0,2,2)); slash.lookAt(target.position); 
+                           if(isWorld) slash.rotateZ(1.57); // Vertical
+                           scene.add(slash);
+                           projs.push({m: slash, t: isWorld ? 'world_slash' : 'divine', v: v, l: 150, dmg: isWorld ? 80 : 40}); sfx('mahoraga');
+                       }
+                  } else if (dist > 4) { s.m.translateZ(0.2); s.lArm.rotation.x = Math.sin(frameTime*0.01); s.rArm.rotation.x = -Math.sin(frameTime*0.01); } 
+                  else { if(s.timer % 60 === 0) { s.rArm.rotation.x = -2; setTimeout(()=>{ s.rArm.rotation.x = 1; target.userData.hp -= 50; fx(target.position, MAT.e, 15); }, 200); } }
+              }
+          }
+      }
+
+      objs.forEach(o => {
+          if (!o.userData.isDummy) {
+              o.lookAt(cam.position); o.translateZ(0.1); 
+              if((myBarrier || runeBarrierActive) && o.position.distanceTo(cam.position) < 4) {
+                  let dir = o.position.clone().sub(cam.position).normalize(); o.position.add(dir.multiplyScalar(0.8)); o.userData.hp -= 3; fx(o.position, MAT.b, 2);
+                  if(o.userData.hp <= 0) { scene.remove(o); o.userData.dead=true; sc+=10; document.getElementById('s').innerText=sc; }
+              }
+              else if(o.position.distanceTo(cam.position)<3 && !myBarrier && !runeBarrierActive){ hp-=10; document.getElementById('h').innerText=hp; if(hp<=0){ isPlay=0; document.getElementById('status').innerText="DEFEAT"; setTimeout(()=>leaveGame(), 2000); } }
+          }
+      });
+      for(let i=objs.length-1; i>=0; i--) { if(objs[i].userData.dead) objs.splice(i,1); }
+
+      let t=Date.now()*0.005;
+      if(isFistMode) fists.position.y = -0.05 + (moving?Math.sin(t*3)*0.05:Math.sin(t)*0.01); 
+      else { wand.position.y = -0.3 + (moving?Math.sin(t*2)*0.03:Math.sin(t)*0.005); if(recoil>0){wand.rotation.x=-recoil; recoil-=0.1;} else wand.rotation.x+=(0-wand.rotation.x)*0.1; }
+      if(isDraw && !isFistMode){runeScale=0.8; runeGroup.rotation.z-=0.15; if(fistRuneR) fistRuneR.rotation.z-=0.15; } 
+      else if(runeScale>0.01){runeScale*=0.85; runeGroup.rotation.z-=0.2; if(fistRuneR) fistRuneR.rotation.z-=0.2; }
+      runeGroup.scale.set(runeScale,runeScale,runeScale); runeGroup.children[2].rotation.y += 0.1;
+      if(fistRuneR && fistRuneR.children.length > 2) { fistRuneR.scale.set(runeScale, runeScale, runeScale); fistRuneR.children[2].rotation.y += 0.1; }
+      if(isRuneMode && fistRuneL) { fistRuneL.rotation.z -= 0.1; fistRuneR.rotation.z -= 0.1; }
+      if(activePortal) activePortal.rotation.z -= 0.05; if(runeBarrierObj) runeBarrierObj.rotation.z += 0.05;
+      for (let i = parts.length - 1; i >= 0; i--) { let p = parts[i]; p.m.position.add(p.v); p.m.scale.multiplyScalar(0.9); p.life--; if(p.life <= 0 || p.m.scale.x < 0.01){ scene.remove(p.m); parts.splice(i,1); } }
+    }
+    ren.render(scene,cam);
+  } catch(e) { console.error("Loop",e); isPlay=0; }
+}
+function spawnDummy(){ let m = new THREE.Mesh(GEO.dummy, MAT.dummy); m.position.set(0, 1.5, -20); m.userData = {hp: 99999, isDummy: true}; scene.add(m); objs.push(m); }
+function spawn(){ let m=new THREE.Mesh(GEO.e, MAT.e); let a=Math.random()*6.28, d=40; m.position.set(cam.position.x+Math.cos(a)*d, 1.5, cam.position.z+Math.sin(a)*d); m.userData={hp:70}; scene.add(m); objs.push(m); if(isPlay) spawnTimer = setTimeout(spawn, Math.max(400, 2000-sc*10)); }
+init();
+</script>
+</body>
+</html>
